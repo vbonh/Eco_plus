@@ -1,9 +1,8 @@
 import Vue from "vue";
 import Router from "vue-router";
 import Settings from "./views/Settings.vue";
-import Nvue from "./views/Nvue.vue";
 import Logs from "./views/Logs.vue";
-import Logsbkp from "./views/Logsbkp.vue";
+
 Vue.use(Router);
 
 export default new Router({
@@ -30,11 +29,7 @@ export default new Router({
       name: "standby  ",
       component: () => import("./views/Standby"),
     },
-    {
-      path: "/nvue",
-      name: "nvue",
-      component: Nvue,
-    },
+    
     {
       path: "/logs",
       name: "logs",

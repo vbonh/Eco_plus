@@ -162,6 +162,7 @@ client.loop_start() #start listening for incoming data
 def main():
     reset_flag=True
     while True:
+        print("loop")
         if is_powered()<=-0.3: 
             runshutdown()
         if status==0: #Unit is off, check if gauges have been reset or else pause and check if status has changed
@@ -176,6 +177,7 @@ def main():
         elif status==1: #unit is on
             reset_flag=False
             if run_mode==0: #and in Manual mode
+                get_SDP6_Data()
                 print(f"Mode Manual, duty cycle is :{duty_cycle}")
                 gpio.set_PWM_dutycycle(18,duty_cycle) 
                 time.sleep(cycle_delay)
