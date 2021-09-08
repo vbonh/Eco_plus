@@ -19,10 +19,8 @@ ina219 = INA219(addr=0x42) ##UPS Chip, get current value to check for plug pullo
 SensorsRead.HV120_Set()    ## Sends config to HV120 Sensor
 
 ### File Paths for Data Logging
-file_path= "/home/pi/Npu_last/VUE_Npu/FlaskBackend/Export_data" #CSV Export Paths
-data_tracker= "/home/pi/Npu_last/VUE_Npu/FlaskBackend/Import_data" #Json path to keep track of CSVs
-
-
+file_path= os.path.join(os.getcwd(), "Export_data") #CSV Export Paths
+data_tracker= os.path.join(os.getcwd(), "Import_data")
 ### MQTT Setup
 BROKER ='localhost' # Broker (this device) address
 TOPIC="esensor" #Default Topic
@@ -38,7 +36,7 @@ duty_cycle=25  # Duty cycle
 run_mode=0 #Operation mode 0=manual, 1=auto, 2=standy (2 Not yet implemented)
 status=0 #0=on 1=Off
 enclosureTarget=12 #Pressure Setpoint for PID control
-cycle_delay=0.5  #Cycling time
+cycle_delay=0.1  #Cycling time
 
 ### PID Setup   
 pid= PID(2,1,0.2, setpoint=enclosureTarget) #Set pid values : P,I,D and Setpoint
@@ -54,8 +52,8 @@ def createlog(path): #Create Log File
          logsRecord= json.loads(logdata.read() )
       except:
          logsRecord=[]  #if empty create an empty array
-   id=str(len(logsRecord)+1).zfill(2) #Get the length of the array and add 1
-   print(now)
+   id=str(len(logsRecord)).zfill(2) #Get the length of the array and add 1
+   print (f"Id is : {id} and logsrecord length is : {len(logsRecord)}")
    fname= id+"_"+now.strftime("%d-%m-%Y")+".csv" #Assign name sequential+ day
    with open(os.path.join(path,fname),"w") as log:
       logsheaders=["Timestamp", "Enclosure Pressure", "Hepa Blockage", "Running Mode"] #write headers
@@ -144,13 +142,11 @@ def get_SDP6_Data():  #Get sensor data and update UI
         runString= "Manual" if run_mode==1 else "Auto"
         msgt=json.dumps({ "airflow_prog": airflow, "airflow_disp":airflow, "enclosure_prog":calcEncProg, "enclosure_disp":sdpr if sdpr>=0 else 0 , "block_prog":calcHEPA_Block, "block_disp":Hepa_Block }) #UI Data : Display values and progress bar value could be computed in js.
         client.publish(TOPIC,msgt) #publish data to UI
-        # print(f"Duty Cycle is : {duty_cycle} and Enclosure Pressure is : {sdpr}/{enclosureTarget}")
         writetolog(file_path,fname,calcEncProg,Hepa_Block,runString) #Log record
 
 def on_message_run_mode(mosq, obj, msg): #Update run_mode upon change page in UI
     global run_mode
     run_mode=int(msg.payload.decode("utf-8"))
-    # print(f"Current run mode is :{run_mode}")
 
 ### Set-up Mqtt callbacks
 client.message_callback_add("is_on", on_message_status) 
@@ -161,7 +157,6 @@ client.loop_start() #start listening for incoming data
 def main():
     reset_flag=True
     while True:
-        print("loop")
         if is_powered()<=-0.3: 
             runshutdown()
         if status==0: #Unit is off, check if gauges have been reset or else pause and check if status has changed
@@ -177,7 +172,6 @@ def main():
             reset_flag=False
             if run_mode==0: #and in Manual mode
                 get_SDP6_Data()
-                print(f"Mode Manual, duty cycle is :{duty_cycle}")
                 gpio.set_PWM_dutycycle(18,duty_cycle) 
                 time.sleep(cycle_delay)
             elif run_mode==1: #and in Auto mode
