@@ -79,11 +79,11 @@ export default {
       links: [
         { icon: "smart_toy", text: "Manual", route: "/" },
         { icon: "settings", text: "Settings", route: "/settings" },
-        { icon: "article", text: "Logs", route: "/logsbkp" },
+        { icon: "article", text: "Logs", route: "/logs" },
         { icon: "hdr_auto", text: "Auto", route: "/auto" },
         { icon: "email", text: "Standby", route: "/standby" },
 
-        // { icon: "email", text: "Blob", route: "/logsbkp" }
+
       ],
     };
   },

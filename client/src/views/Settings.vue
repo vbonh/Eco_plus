@@ -6,9 +6,6 @@
           <v-card-title class="pb-0 pl-3 ma-0 title red--text darken-2">
             Date:
           </v-card-title>
-          <v-flex>
-            <v-checkbox label="Remember me" v-model="checkbox"></v-checkbox>
-          </v-flex>
           <v-flex pt-0 pr-4 pl-3 mt--3>
             <v-dialog
               ref="dialog1"

@@ -8,6 +8,8 @@ import csv
 import os
 from datetime import datetime
 from simple_pid import PID
+import sys
+import shutil
 
 #_______________________________________________________SETUP___________________________________________
 ### GPIO Pin Assign
@@ -28,68 +30,76 @@ CLIENT_ID="main_Loop" #Client Id
 
 client= mqtt.Client("Sensors") 
 client.connect(BROKER,1803)
-client.subscribe([("is_on",0),("run_mode",0),("enclosure_target",0),("duty_cycle",1)])
+client.subscribe([("is_on",1),("run_mode",1),("enclosure_target",1),("duty_cycle",1),("getlogs",1),("dellogs",1),("exLogs",1)])
 
 ### Variables
-logsRecord={}  # Data for Import_data Json
+logsRecord=[]  # Data for Import_data Json
 duty_cycle=25  # Duty cycle
 run_mode=0 #Operation mode 0=manual, 1=auto, 2=standy (2 Not yet implemented)
 status=0 #0=on 1=Off
 enclosureTarget=12 #Pressure Setpoint for PID control
-cycle_delay=0.1  #Cycling time
-
+cycle_delay=0.3  #Cycling time
+fname=""
 ### PID Setup   
 pid= PID(2,1,0.2, setpoint=enclosureTarget) #Set pid values : P,I,D and Setpoint
 pid.output_limits=(20,255) #Set output limits (20 to keep the motor energised 255 (max value))
 
 
 ### Functions
+def index(incr=0):
+    with open('conf.json') as file:
+        data = json.load(file)
+        incr=(data["log_index"]+incr) if data["log_index"]+incr<=999 else 0
+        data.update({"log_index":incr})
+    with open('conf.json',"w") as file:
+        json.dump(data, file, indent=4)
+        return (str(data["log_index"]).zfill(3))
+
 def createlog(path): #Create Log File
-   global fname
-   now=datetime.today()
-   with open(os.path.join(data_tracker,"logs.json")) as logdata:  #load content of existing data in the data_tracker
-      try:
-         logsRecord= json.loads(logdata.read() )
-      except:
-         logsRecord=[]  #if empty create an empty array
-   id=str(len(logsRecord)).zfill(2) #Get the length of the array and add 1
-   print (f"Id is : {id} and logsrecord length is : {len(logsRecord)}")
-   fname= id+"_"+now.strftime("%d-%m-%Y")+".csv" #Assign name sequential+ day
-   with open(os.path.join(path,fname),"w") as log:
-      logsheaders=["Timestamp", "Enclosure Pressure", "Hepa Blockage", "Running Mode"] #write headers
-      writer=csv.writer(log, delimiter=",")
-      writer.writerow(logsheaders)
-   logsRecord.append({"filename":fname[:-4],"startTime":now.strftime("%H:%M"),"endTime":"in progress"}) #add to list of logs (tracking and data persistence)
-   with open(os.path.join(data_tracker,"logs.json"),"w") as output:
-         json.dump(logsRecord, output, indent=4) #Write to logs record
+    global fname
+    global logsRecord
+    now=datetime.today()
+    with open(os.path.join(data_tracker,"logs.json")) as logdata:  #load content of existing data in the data_tracker
+        try:
+            logsRecord= json.loads(logdata.read() )
+        except:
+            logsRecord=[]  #if empty create an empty array
+        id=index(1) #Get the length of the array and add 1
+    print (f"Id is : {id} and logsrecord length is : {len(logsRecord)}")
+    fname= id+"_"+now.strftime("%d-%m-%Y")+".csv" #Assign name sequential+ day
+    print (fname)
+    with open(os.path.join(path,fname),"w") as log:
+        logsheaders=["Timestamp", "Enclosure Pressure", "Hepa Blockage", "Running Mode"] #write headers
+        writer=csv.writer(log, delimiter=",")
+        writer.writerow(logsheaders)
+        logsRecord.append({"filename":fname[:-4],"startTime":now.strftime("%H:%M"),"endTime":"in progress","isdisabled":True}) #add to list of logs (tracking and data persistence)
+    with open(os.path.join(data_tracker,"logs.json"),"w") as output:
+        json.dump(logsRecord, output, indent=4)
+    data=logsRecord[:]
+    data.reverse()
+    client.publish("datalogs",json.dumps(data))
 
 def writetolog( file_path, fname, data1, data2, data3):  #Function to write append data to log file
-   with open(os.path.join(file_path,fname),"a") as logfile: 
+    with open(os.path.join(file_path,fname),"a") as logfile: 
       logwriter=csv.writer(logfile)
       now=datetime.today()
       line=[now.strftime("%H:%M:%S"),data1, data2, data3]
       logwriter.writerow(line)
    
 def endlog( path, fname): #Change the status of log session, add end time to log tracking
-   with open(os.path.join(path,fname),"r") as logfile:
+    global logsRecord
+    with open(os.path.join(path,fname),"r") as logfile:
        now=datetime.today()
-       data=json.loads(logfile.read())
-       id=(len(data)-1)
-   with open(os.path.join(path,fname),"w") as logfile:
-       data[id]["endTime"]=now.strftime("%H:%M")
-       json.dump(data,logfile,indent=4)
-
-def deletelogentry( path, fname,entryid): #Delete log entry and refresh UI (WIP)
-   with open(os.path.join(path,fname),"r") as logfile:
-       data=json.loads(logfile.read())
-   with open(os.path.join(path,fname),"w") as logfile:
-        sortedList=sorted(entryid, reverse=True)
-        for e in sortedList:
-            print (e)
-            del data[e]
-        json.dump(data,logfile,indent=4)
-        msgt=json.dumps(data)
-        client.publish("datalogs",msgt)
+       logsRecord=json.loads(logfile.read())
+       id=(len(logsRecord)-1)
+    with open(os.path.join(path,fname),"w") as logfile:
+       logsRecord[id]["endTime"]=now.strftime("%H:%M")
+       logsRecord[id]["isdisabled"]=False
+       json.dump(logsRecord,logfile,indent=4)
+       print(logsRecord)
+    data=logsRecord[:]
+    data.reverse()
+    client.publish("datalogs",json.dumps(data))
 
 def on_message_status(mosq, obj, msg): #Update the running status of the unit, on/off. Change variable in main loop
     global run_mode 
@@ -124,6 +134,59 @@ def on_message_DC(mosq, obj, msg): #Update duty cycle when updated for manual mo
 def is_powered(): #Check current flow direction to detect if the unit has been unplugged
     return ((ina219.getCurrent_mA())/1000)
 
+def getLogs(mosq, obj, msg): 
+    global logsRecord
+    data=logsRecord[:]
+    print(f"Publishing logs")
+    data.reverse()
+    client.publish("datalogs",json.dumps(data))
+
+def deleteLogs(mosq, obj, msg): 
+    global logsRecord
+    log_num=len(logsRecord)-1-int(msg.payload.decode("utf-8"))
+    del_file=os.path.join(file_path,logsRecord[log_num]['filename'])
+    os.remove(f"{del_file}.csv")
+    del logsRecord[log_num]
+    with open(os.path.join(data_tracker,"logs.json"),"w") as logfile:
+        json.dump(logsRecord,logfile,indent=4)
+        print(f"entry number {log_num} has been deleted")
+
+def logExport(mosq, obj, msg): 
+    fileExList=msg.payload.decode("utf-8")  
+    # if fileExList== "all"
+    # exportLogs(fileExList)
+    print(fileExList)
+    
+def exportLogs(f_list): #Check if usb is present and export file if it is else publishes an error message.
+  subf=os.listdir("/media/pi")
+  if len(subf)==0:
+    print("No Usb")
+
+  else:
+    subf=os.path.join("/media/pi", subf[0])
+    isEcoThere=os.listdir(subf)
+    if "Eco+_log_data" in isEcoThere:
+      subf=os.path.join(subf,"Eco+_log_data")
+      copylogs(f_list,subf)
+    else:
+      os.mkdir(os.path.join(subf,"Eco+_log_data"))
+      subf=os.path.join(subf,"Eco+_log_data")
+      copylogs(f_list,subf)
+      
+
+
+def copylogs(filelist,wpath): #Wrapper copying files from source to target
+  for e in filelist:
+    source = (f"/home/pi/EcoPlus/Eco_plus/FlaskBackend/Export_data/{e}.csv")
+    target = wpath
+    try:
+        shutil.copy(source, target)
+        print("File Added")
+    except IOError as e:
+        print("Unable to copy file. %s" % e)
+    except:
+        print("Unexpected error:", sys.exc_info())
+
 def runshutdown(): #Not yet implemented : Trigger soft shutdown when power off is detected.
     print("starting shutdown now")
 
@@ -132,6 +195,8 @@ def get_SDP6_Data():  #Get sensor data and update UI
         global hv120r #hv120r reading
         global run_mode #Run Mode for data logging
         global duty_cycle #Duty cycle for test monitoring (to remove)
+        global fname #Current logfile name
+        print(fname)
         sdpr = round(SensorsRead.read_SDP(),1) 
         calcEncProg= round( (sdpr/24)*100,1)
         hv120r= round(SensorsRead.read_NPU(),1)
@@ -148,14 +213,26 @@ def on_message_run_mode(mosq, obj, msg): #Update run_mode upon change page in UI
     global run_mode
     run_mode=int(msg.payload.decode("utf-8"))
 
+
+
 ### Set-up Mqtt callbacks
 client.message_callback_add("is_on", on_message_status) 
 client.message_callback_add("run_mode", on_message_run_mode) 
 client.message_callback_add("enclosure_target", on_message_EP) 
 client.message_callback_add("duty_cycle", on_message_DC) 
+client.message_callback_add("getlogs", getLogs)
+client.message_callback_add("dellogs", deleteLogs)
+client.message_callback_add("exLogs", logExport)
 client.loop_start() #start listening for incoming data
 def main():
+    global logsRecord
     reset_flag=True
+    try:
+        with open(os.path.join(data_tracker,"logs.json")) as logdata:  #load content of existing data in the data_tracker
+            logsRecord= json.loads(logdata.read() )
+    except:
+        print("error loading logs record")
+    
     while True:
         if is_powered()<=-0.3: 
             runshutdown()
@@ -173,8 +250,13 @@ def main():
             if run_mode==0: #and in Manual mode
                 get_SDP6_Data()
                 gpio.set_PWM_dutycycle(18,duty_cycle) 
-                time.sleep(cycle_delay)
+                time.sleep(cycle_delay)   
             elif run_mode==1: #and in Auto mode
+                get_SDP6_Data()
+                duty_cycle=pid(round(SensorsRead.read_SDP(),1))  
+                gpio.set_PWM_dutycycle(18,duty_cycle)                                             
+                time.sleep(cycle_delay)
+            elif run_mode==2: #and in Standby mode
                 get_SDP6_Data()
                 duty_cycle=pid(round(SensorsRead.read_SDP(),1))  
                 gpio.set_PWM_dutycycle(18,duty_cycle)                                             
