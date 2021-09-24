@@ -19,6 +19,7 @@ gpio.set_mode(18, pigpio.OUTPUT)
 ### SENSORS
 ina219 = INA219(addr=0x42) ##UPS Chip, get current value to check for plug pullouts
 SensorsRead.HV120_Set()    ## Sends config to HV120 Sensor
+SensorsRead.HV110_Set()    ## Sends config to HV110 Sensor
 
 ### File Paths for Data Logging
 file_path= os.path.join(os.getcwd(), "Export_data") #CSV Export Paths
